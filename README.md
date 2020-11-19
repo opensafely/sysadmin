@@ -1,3 +1,5 @@
+# OpenSAFELY Sysadmin Tools
+
 This repository contains the documentation and scripts used to manage
 the OpenSAFELY Github organisation's users, teams, repos and
 permissions.
