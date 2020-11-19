@@ -49,12 +49,41 @@ class Team():
             )
 
 
+
+def convert_protection(protection):
+    """Convert protection read format to the write format.
+
+    Converts results of branch.get_protection() into a dict that can passed to
+    branch.edit_protection(). That this is necessary is a sad thing.
+
+    Input: https://pygithub.readthedocs.io/en/latest/github_objects/BranchProtection.html
+
+    Output: keyword args as per:
+
+    https://pygithub.readthedocs.io/en/latest/github_objects/Branch.html#github.Branch.Branch.edit_protection
+    """
+    reviews = protection.required_pull_request_reviews
+    output = dict(
+        enforce_admins=protection.enforce_admins,
+        dismissal_users=getattr(reviews, 'dismissal_users', None),
+        dismissal_teams=getattr(reviews, 'dismissal_teams', None),
+        dismiss_stale_reviews=getattr(reviews, 'dismiss_stale_reviews', None),
+        require_code_owner_reviews=getattr(reviews, 'require_code_owner_reviews', None),
+        required_approving_review_count=getattr(reviews, 'required_approving_review_count', None),
+        strict=getattr(protection.required_status_checks, 'strict', None),
+        contexts=getattr(protection.required_status_checks, 'contexts', None),
+        # TODO: user/team push restrictions if we need them
+    )
+ 
+    return output
+
+
 def protect_branch(repo, branch=None, **kwargs):
     """Audit and enforce branch protections.
     
     Keyword args can be used to set additional restrictions, as per:
 
-    https://developer.github.com/v3/repos/branches/#parameters-1 
+    https://pygithub.readthedocs.io/en/latest/github_objects/Branch.html#github.Branch.Branch.edit_protection
     
     We set enforce_admins=True by default
 
@@ -84,21 +113,20 @@ def protect_branch(repo, branch=None, **kwargs):
 
     for protected_branch in protected_branches:
         try:
-            current_protection = protected_branch.get_protection().raw_data
+            current_protection = convert_protection(protected_branch.get_protection())
         except GithubException as e:
             if e.status == 404:
-                print('{} {}: branch not protected'.format(repo.full_name, branch))
+                print('{} {}: branch not protected'.format(repo.full_name, protected_branch.name))
                 protection = kwargs
-                current_protection = {}
             else:
                 raise
-
-        for name, expected in kwargs.items():
-            if current_protection.get(name) != expected:
-                protection[name] = expected
-
+        else:
+            for k, v in kwargs.items():
+                if current_protection[k] != v:
+                    protection[k] = v
+            
         for name, value in protection.items():
-            print('{} {}: setting {} to {}'.format(repo.full_name, branch, name, value))
+            print('{} {}: setting {} to {}'.format(repo.full_name, protected_branch.name, name, value))
         if EXECUTE and protection:
             protected_branch.edit_protection(**protection)
 
