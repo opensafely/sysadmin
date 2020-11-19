@@ -1,0 +1,34 @@
+organsation: OpenSAFELY 
+developers:
+        - bloodearnest
+        - evansd
+        - inglesp
+        - ghickman
+        - sebbacon
+        - madwort
+# admin access to all repositories
+managers:
+        - bloodearnest
+        - sebbacon
+        - madwort
+# accounts that should not be granted general access
+bots:
+        - opensafely-readonly
+# list of repos restricted to developers
+protected_repositories:
+        - opensafely/cohort-extractor
+        - opensafely/ctds-binary
+        - opensafely/emis-acceptance-test
+        - opensafely/emis-tools
+        - opensafely/git-server-proxy
+        - opensafely/job-integration-tests
+        - opensafely/job-runner
+        - opensafely/job-server
+        - opensafely/jupyter-docker
+        - opensafely/opencodelists
+        - opensafely/r-docker
+        - opensafely/stata-docker
+        - opensafely/base-docker
+        - opensafely/python-docker
+        - opensafely/docker-proxy
+        - opensafely/sysadmin
