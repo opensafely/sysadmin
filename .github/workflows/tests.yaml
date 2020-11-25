@@ -1,6 +1,7 @@
 name: Tests
 on: 
   push:
+    branches: ['!master']
   workflow_dispatch:
 jobs:
   test_dry_run:
@@ -20,4 +21,6 @@ jobs:
     - name: Run dry-run
       env:
         ORG_TOKEN: ${{ secrets.ORG_READONLY_TOKEN }}
-      run: python manage-github.py config.yaml --dry-run
+      run: |
+        echo "WARNING: ignore output from this command - it is running w/o elevated privileges needed to correctly read branch protection details"
+        python manage-github.py config.yaml --dry-run
