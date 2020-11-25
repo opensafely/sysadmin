@@ -1,9 +1,9 @@
 name: Tests
 on: 
-  - push
-  - workflow_dispatch
+  push:
+  workflow_dispatch:
 env:
-  ORG_TOKEN: {{ secrets.ORG_READONLY_TOKEN }}
+  ORG_TOKEN: "{{ secrets.ORG_READONLY_TOKEN }}"
 jobs:
   test_dry_run:
     runs-on: ubuntu-latest
