@@ -1,5 +1,6 @@
 import argparse
 import os
+import select
 import sys
 import yaml
 
@@ -73,7 +74,6 @@ def protect_branch(repo, branch=None, **kwargs):
             current_protection = convert_protection(protected_branch.get_protection())
         except GithubException as e:
             if e.status == 404:
-                print('{} {}: branch not protected'.format(repo.full_name, protected_branch.name))
                 protection = kwargs
             else:
                 raise
@@ -85,7 +85,8 @@ def protect_branch(repo, branch=None, **kwargs):
         if protection: 
             yield client.Change(
                 lambda: protected_branch.edit_protection(**protection),
-                'setting branch protection on {} to:\n{}',
+                'setting branch protection on {}/{} to:\n{}',
+                repo.name,
                 protected_branch.name,
                 ', '.join('{}={}'.format(k, v) for k, v in protection.items()),
             )
@@ -166,6 +167,15 @@ def ensure_teams(config, org):
             researchers.add_repo(repo, 'admin')
 
 
+def input_with_timeout(prompt, timeout=5.0):
+    print(prompt)
+    i, _, _ = select.select([sys.stdin], [], [], 5)
+    if i:
+        return sys.stdin.readline().strip().lower()
+    else:
+        return None
+
+
 def main(argv=sys.argv[1:]):
     parser = argparse.ArgumentParser(
         description='Apply policy to OpenSAFELY github org'
@@ -179,34 +189,47 @@ def main(argv=sys.argv[1:]):
                         help='Just print what would change and exit')
 
     args = parser.parse_args(argv)
+    # we run in one of three modes:
+    # --dry-run: analyse changes, but do not apply
+    # --exec: analyse changes and apply immediately
+    # default: analyse changes and ask for confirmation before applying them
+    mode = 'default'
+    if args.dry_run:
+        mode = 'dry-run'
+    elif args.execute:
+        mode = 'execute'
 
     org = client.get_org()
     config = yaml.safe_load(open(args.config))
 
-    if args.dry_run:
+    if mode == 'dry-run':
         print('*** DRY RUN - no changes will be made ***')
 
-    changes = []
+    pending_changes = []
+
+    # analyse changes needed
     for change in ensure_teams(config, org):
         print(change)
-        if args.execute:
+        if mode == 'execute':
             change()
-        elif not self.dry-run:
-            changes.append(change)
+        else:
+            pending_changes.append(change)
 
-    if changes:
-        print("Do you want to apply the above changes (y/n)?")
-        i, _, _ = select.select([sys.stdin], [], [], 5)
-        if i:
-            if sys.stdin.readline().strip().lower() == 'y':
-                for change in changes:
+    if mode == 'dry-run':
+        print('*** DRY RUN - no changes were made ***')
+    elif mode == 'default': 
+        if pending_changes:
+            answer = input_with_timeout(
+                "Do you want to apply the above changes (y/n)?", 
+                10.0,
+            )
+            if answer == 'y':
+                for change in pending_changes:
                     print(change)
                     change()
-    else:
-        print('No changes needed')
-
-    if args.dry_run:
-        print('*** DRY RUN - no changes were made ***')
+        else:
+            print('No changes needed')
+    
 
 if __name__ == '__main__':
     main()
