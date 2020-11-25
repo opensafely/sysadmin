@@ -5,50 +5,7 @@ import yaml
 
 from github import Github, GithubException
 
-EXECUTE = False
-
-parser = argparse.ArgumentParser(
-    description='Apply policy to OpenSAFELY github org'
-)
-parser.add_argument('config', help='The team config')
-parser.add_argument('--exec', action='store_true',
-                    dest='execute',
-                    help='Actually execute commands')
-
-
-
-class Team():
-    def __init__(self, team):
-        self.team = team
-        # we preload these calls as we check for membership lots
-        print('Loading {}...'.format(team.name))
-        self.members = {m.login: m for m in team.get_members()}
-        self.repos = {r.full_name: r for r in team.get_repos()}
-
-    def add_member(self, member):
-        if member.login in self.members:
-            return
-        if EXECUTE:
-            self.team.add_membership(member)
-        print('{}: added {} to team'.format(self.team.name, member.login))
-
-    def add_repo(self, repo, permission):
-        if repo.full_name not in self.repos:
-            if EXECUTE:
-                self.team.add_to_repos(repo)
-            print('{}: added {} to team'.format(self.team.slug, repo.full_name))
-
-        current = self.team.get_repo_permission(repo)
-        # this is a little awkward, as 'maintain' permission is newish, so the
-        # library doesn't provide nice access
-        if current is None or not current.raw_data[permission]:
-            if EXECUTE:
-                self.team.set_repo_permission(repo, permission)
-            print('{}: granted {} on {}'.format(
-                self.team.slug, permission, repo.full_name)
-            )
-
-
+import client
 
 def convert_protection(protection):
     """Convert protection read format to the write format.
@@ -124,14 +81,17 @@ def protect_branch(repo, branch=None, **kwargs):
             for k, v in kwargs.items():
                 if current_protection[k] != v:
                     protection[k] = v
-            
-        for name, value in protection.items():
-            print('{} {}: setting {} to {}'.format(repo.full_name, protected_branch.name, name, value))
-        if EXECUTE and protection:
-            protected_branch.edit_protection(**protection)
+
+        if protection: 
+            yield client.Change(
+                protected_branch.edit_protection(**protection),
+                'setting branch protection on {} to:\n{}',
+                protected_branch.name,
+                ', '.join('{}={}'.format(k, v) for k, v in protection.items()),
+            )
 
 
-def ensure_teams(config, org):
+def ensure_teams(config, org, execute=False):
     """Ensure that all teams have the correct members and repositories.
 
     The current policy is: 
@@ -158,74 +118,95 @@ def ensure_teams(config, org):
     to be usable in an attack.
     """
 
-    opensafely = Team(org)
-    researchers = Team(org.get_team_by_slug('researchers'))
-    developers = Team(org.get_team_by_slug('developers'))
-    managers = Team(org.get_team_by_slug('managers'))
+    opensafely = client.GithubTeam(org)
+    researchers = client.GithubTeam(org.get_team_by_slug('researchers'))
+    developers = client.GithubTeam(org.get_team_by_slug('developers'))
+    managers = client.GithubTeam(org.get_team_by_slug('managers'))
 
     # everyone is a researcher
-    print('Updating researchers membership...')
+    print('Checking researchers membership...')
     for member in opensafely.members.values():
         # avoid elevating bot accounts
         if member.login not in config['bots']:
-            researchers.add_member(member)
+            yield from researchers.add_member(member)
 
-    print('Updating developers membership...')
+    print('Checking developers membership...')
     for dev in config['developers']:
         if dev in opensafely.members:  # protect against deleted users
-            developers.add_member(opensafely.members[dev])
+            yield from developers.add_member(opensafely.members[dev])
 
-    print('Updating admins membership...')
+    print('Checking admins membership...')
     for manager in config['managers']:
         if manager in opensafely.members:  # protect against deleted users
-            managers.add_member(opensafely.members[manager])
+            yield from managers.add_member(opensafely.members[manager])
 
     # TODO: remove developers/admins if they are no longer in the groups. In
     # the common case (someone leaving), then I think there is no need, as
     # their account will be removed from the organisation and thus any teams.
     # But we should probably check that
 
-    print('Updating team repositories...')
+    print('Checking org repositories...')
     for repo in opensafely.repos.values():
         # admins have access to all repos
-        managers.add_repo(repo, 'admin')
+        yield from managers.add_repo(repo, 'admin')
 
         # either a protected developer repo or not
         if repo.full_name in config['protected_repositories']:
             # stricter branch protection for these repos 
-            protect_branch(
+            yield from protect_branch(
                 repo,
                 enforce_admins=True,
                 required_approving_review_count=1,
             )
-            developers.add_repo(repo, 'admin')
-            researchers.add_repo(repo, 'triage')
+            yield from developers.add_repo(repo, 'admin')
+            yield from researchers.add_repo(repo, 'triage')
         else:
             # basic branch protection against force pushes, even for admins
             protect_branch(repo, enforce_admins=True)
             researchers.add_repo(repo, 'admin')
 
 
-if __name__ == '__main__':
-    args = parser.parse_args()
-    EXECUTE = args.execute
+def main(argv=sys.argv[1:]):
+    parser = argparse.ArgumentParser(
+        description='Apply policy to OpenSAFELY github org'
+    )
+    parser.add_argument('config', help='The team config')
+    parser.add_argument('--exec', action='store_true',
+                        dest='execute',
+                        help='Automatically execute commands')
+    parser.add_argument('--dry-run', action='store_true',
+                        dest='dry_run',
+                        help='Just print what would change and exit')
 
+    args = parser.parse_args(argv)
+
+    org = client.get_org()
     config = yaml.safe_load(open(args.config))
 
-    if 'GITHUB_TOKEN' not in os.environ:
-        print('Error: missing environment variable GITHUB_TOKEN')
-        print('You need a Personal Access Token, with the admin:org and all repo permssions')
-        print('https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token')
-        sys.exit(1)
-
-    gh = Github(os.environ['GITHUB_TOKEN'])
-    org = gh.get_organization('OpenSAFELY')
-
-    if not EXECUTE:
+    if args.dry_run:
         print('*** DRY RUN - no changes will be made ***')
 
-    ensure_teams(config, org)
+    changes = []
+    for change in ensure_teams(config, org, args.execute):
+        print(change)
+        if args.execute:
+            change()
+        elif not self.dry-run:
+            changes.append(change)
 
-    if not EXECUTE:
+    if changes:
+        print("Do you want to apply the above changes (y/n)?")
+        i, _, _ = select.select([sys.stdin], [], [], 5)
+        if i:
+            if sys.stdin.readline().strip().lower() == 'y':
+                for change in changes:
+                    print(change)
+                    change()
+    else:
+        print('No changes needed')
+
+    if args.dry_run:
         print('*** DRY RUN - no changes were made ***')
-        print('run "{} --exec" to execute'.format(" ".join(sys.argv)))
+
+if __name__ == '__main__':
+    main()

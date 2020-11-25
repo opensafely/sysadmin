@@ -32,3 +32,4 @@ protected_repositories:
         - opensafely/python-docker
         - opensafely/docker-proxy
         - opensafely/sysadmin
+        - opensafely/opensafely-cli
