@@ -1,0 +1,25 @@
+name: Tests
+on: 
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test_dry_run:
+    runs-on: ubuntu-latest
+    name: Run dry-run
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.8
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: Run dry-run
+      env:
+        ORG_TOKEN: ${{ secrets.ORG_READONLY_TOKEN }}
+      run: |
+        echo "WARNING: ignore output from this command - it is running w/o elevated privileges needed to correctly read branch protection details"
+        python manage-github.py config.yaml --dry-run
