@@ -187,7 +187,7 @@ def main(argv=sys.argv[1:]):
         print('*** DRY RUN - no changes will be made ***')
 
     changes = []
-    for change in ensure_teams(config, org, args.execute):
+    for change in ensure_teams(config, org):
         print(change)
         if args.execute:
             change()

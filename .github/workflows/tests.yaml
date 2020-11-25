@@ -1,0 +1,23 @@
+name: Tests
+on: 
+  - push
+  - workflow_dispatch
+env:
+  ORG_TOKEN: {{ secrets.ORG_READONLY_TOKEN }}
+jobs:
+  test_dry_run:
+    runs-on: ubuntu-latest
+    name: Run dry-run
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+    - name: Set up Python 3.8
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.8
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    - name: Run dry-run
+      run: python manage-github.py config.yaml --dry-run

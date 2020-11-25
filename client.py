@@ -4,7 +4,7 @@ from github import Github
 
 
 ERROR_MSG = '''
-Error: missing environment variable GITHUB_TOKEN. You need a Personal
+Error: missing environment variable ORG_TOKEN. You need a Personal
 Access Token, with the admin:org and all repo permssions
 
 https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-access-token
@@ -12,7 +12,7 @@ https://docs.github.com/en/github/authenticating-to-github/creating-a-personal-a
 
 
 def github_client():
-    token = os.environ.get('GITHUB_TOKEN')
+    token = os.environ.get('ORG_TOKEN')
     if not token:
         sys.exit(ERROR_MSG)
     return Github(token)
