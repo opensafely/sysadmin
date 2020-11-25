@@ -91,7 +91,7 @@ def protect_branch(repo, branch=None, **kwargs):
             )
 
 
-def ensure_teams(config, org, execute=False):
+def ensure_teams(config, org):
     """Ensure that all teams have the correct members and repositories.
 
     The current policy is: 
