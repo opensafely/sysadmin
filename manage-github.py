@@ -84,7 +84,7 @@ def protect_branch(repo, branch=None, **kwargs):
 
         if protection: 
             yield client.Change(
-                protected_branch.edit_protection(**protection),
+                lambda: protected_branch.edit_protection(**protection),
                 'setting branch protection on {} to:\n{}',
                 protected_branch.name,
                 ', '.join('{}={}'.format(k, v) for k, v in protection.items()),
