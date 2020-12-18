@@ -33,3 +33,4 @@ protected_repositories:
         - opensafely/docker-proxy
         - opensafely/sysadmin
         - opensafely/opensafely-cli
+        - opensafely/job-runner-dependencies
