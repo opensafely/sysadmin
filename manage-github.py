@@ -67,7 +67,12 @@ def protect_branch(repo, branch=None, **kwargs):
                 raise
 
     if not protected_branches:
-        raise RuntimeException("Could not find branch {}".format(branches))
+        yield client.Change(
+            lambda: None,
+            "ERROR: Could not find {} branches in {}",
+            branches,
+            repo.full_name,
+        )
 
     for protected_branch in protected_branches:
         try:
@@ -81,7 +86,7 @@ def protect_branch(repo, branch=None, **kwargs):
                 # currently just vaccine-eligibility repo, we want to avoid that in future.
                 yield client.Change(
                     lambda: None,
-                    'ERROR: exception getting branch protection on {}/{}\n{}'
+                    'ERROR: exception getting branch protection on {}/{}\n{}',
                     repo.full_name,
                     protected_branch.name,
                     e,
