@@ -12,7 +12,6 @@ import yaml
 import client
 
 ORG_NAME = "OpenSAFELY"
-REPO_NAME_PATTERN = "^.*-research$"
 BASE_PATH = os.path.abspath("research")
 
 
@@ -37,18 +36,18 @@ def main():
     args = parser.parse_args()
 
     if args.subcommand == "list":
-        list_()
+        list_repos()
     elif args.subcommand == "update":
         update()
     elif args.subcommand == "exec":
-        exec_([args.command] + args.args)
+        exec_in_repos([args.command] + args.args)
     elif args.subcommand == "pull-request":
         pull_request(args.branch, args.title)
     else:
         assert False, args.subcommand
 
 
-def list_():
+def list_repos():
     client = get_client()
     for repo in get_repos(client):
         print(repo.html_url)
@@ -73,7 +72,7 @@ def update():
             subprocess.run(["git", "clone", repo.ssh_url, path], check=True)
 
 
-def exec_(argv):
+def exec_in_repos(argv):
     for path in sorted(glob.glob(os.path.join(BASE_PATH, "*"))):
         print("-" * 80)
         print(os.path.basename(path))
