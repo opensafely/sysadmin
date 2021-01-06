@@ -77,9 +77,11 @@ def protect_branch(repo, branch=None, **kwargs):
                 # new repo no protection set
                 protection = kwargs
             else:
+                # this occurs when a private repo is forked *into* the opensafely org
+                # currently just vaccine-eligibility repo, we want to avoid that in future.
                 yield client.Change(
                     lambda: None,
-		    'ERROR: exception getting branch protection on {}/{}:\n{}',
+                    'ERROR: exception getting branch protection on {}/{}\n{}'
                     repo.full_name,
                     protected_branch.name,
                     e,
