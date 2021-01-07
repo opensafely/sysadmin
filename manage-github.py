@@ -67,16 +67,31 @@ def protect_branch(repo, branch=None, **kwargs):
                 raise
 
     if not protected_branches:
-        raise RuntimeException("Could not find branch {}".format(branches))
+        yield client.Change(
+            lambda: None,
+            "ERROR: Could not find {} branches in {}",
+            branches,
+            repo.full_name,
+        )
 
     for protected_branch in protected_branches:
         try:
             current_protection = convert_protection(protected_branch.get_protection())
         except GithubException as e:
             if e.status == 404:
+                # new repo no protection set
                 protection = kwargs
             else:
-                raise
+                # this occurs when a private repo is forked *into* the opensafely org
+                # currently just vaccine-eligibility repo, we want to avoid that in future.
+                yield client.Change(
+                    lambda: None,
+                    'ERROR: exception getting branch protection on {}/{}\n{}',
+                    repo.full_name,
+                    protected_branch.name,
+                    e,
+                )
+                continue
         else:
             for k, v in kwargs.items():
                 if current_protection[k] != v:
@@ -148,6 +163,7 @@ def ensure_teams(config, org):
 
     print('Checking org repositories...')
     for repo in opensafely.repos.values():
+        print(repo.full_name)
         # admins have access to all repos
         yield from managers.add_repo(repo, 'admin')
 
@@ -163,8 +179,8 @@ def ensure_teams(config, org):
             yield from researchers.add_repo(repo, 'triage')
         else:
             # basic branch protection against force pushes, even for admins
-            protect_branch(repo, enforce_admins=True)
-            researchers.add_repo(repo, 'admin')
+            yield from protect_branch(repo, enforce_admins=True)
+            yield from researchers.add_repo(repo, 'admin')
 
 
 def input_with_timeout(prompt, timeout=5.0):
@@ -221,7 +237,7 @@ def main(argv=sys.argv[1:]):
         if pending_changes:
             answer = input_with_timeout(
                 "Do you want to apply the above changes (y/n)?", 
-                10.0,
+                30.0,
             )
             if answer == 'y':
                 for change in pending_changes:
