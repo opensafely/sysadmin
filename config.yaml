@@ -34,3 +34,5 @@ protected_repositories:
         - opensafely/sysadmin
         - opensafely/opensafely-cli
         - opensafely/job-runner-dependencies
+        - opensafely/output-publisher
+        - opensafely/tools-docker
