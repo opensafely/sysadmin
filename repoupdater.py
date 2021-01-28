@@ -32,6 +32,7 @@ def main():
     )
     pull_request_parser.add_argument("branch")
     pull_request_parser.add_argument("title")
+    pull_request_parser.add_argument('--merge', action='store_true')
 
     args = parser.parse_args()
 
@@ -42,7 +43,7 @@ def main():
     elif args.subcommand == "exec":
         exec_in_repos([args.command] + args.args)
     elif args.subcommand == "pull-request":
-        pull_request(args.branch, args.title)
+        pull_request(args.branch, args.title, args.merge)
     else:
         assert False, args.subcommand
 
@@ -80,7 +81,7 @@ def exec_in_repos(argv):
         subprocess.run(argv)
 
 
-def pull_request(branch, title):
+def pull_request(branch, title, merge):
     client = get_client()
     repos = get_repos(client)
 
@@ -92,13 +93,15 @@ def pull_request(branch, title):
         subprocess.run(["git", "checkout", branch], check=True)
         subprocess.run(["git", "push", "-u", "origin", branch], check=True)
         try:
-            repo.create_pull(head=branch, base="master", title=title, body="")
+            pr = repo.create_pull(head=branch, base="master", title=title, body="")
         except GithubException as e:
             if e.status == 422:
                 print(e)
                 continue
             raise
 
+        if merge:
+            pr.merge()
 
 def get_client():
     return client.github_client()
@@ -106,8 +109,9 @@ def get_client():
 
 def get_repos(client, org_name=ORG_NAME):
     org = client.get_organization(org_name)
-    protected = config = yaml.safe_load(open('config.yaml'))['protected_repositories']
-    repos = [repo for repo in org.get_repos() if repo.full_name not in protected]
+    config = yaml.safe_load(open('config.yaml'))
+    excluded = config['protected_repositories'] + config.get('non_study_repos', [])
+    repos = [repo for repo in org.get_repos() if repo.full_name not in excluded]
     return sorted(repos, key=lambda repo: repo.name)
 
 
