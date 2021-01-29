@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import os
 import select
 import sys
@@ -7,6 +8,27 @@ import yaml
 from github import Github, GithubException
 
 import client
+
+
+# This applies to all repos. Values are from
+# https://docs.github.com/en/rest/reference/repos#update-a-repository
+REPO_POLICY = {
+    "delete_branch_on_merge": True
+}
+
+# This applies to study repo master/main branchs. See convert_protection
+# function for values.
+STUDY_BRANCH_POLICY = {
+    "enforce_admins": True,
+}
+
+# This applies to code repo master/main branchs. See convert_protection
+# function for values.
+CODE_BRANCH_POLICY = {
+    "enforce_admins": True,
+    "required_approving_review_count": 1,
+}
+
 
 def convert_protection(protection):
     """Convert protection read format to the write format.
@@ -107,80 +129,21 @@ def protect_branch(repo, branch=None, **kwargs):
             )
 
 
-def ensure_teams(config, org):
-    """Ensure that all teams have the correct members and repositories.
+def configure_repo(repo, **kwargs):
+    """Configure a repo according to config."""
+    if repo.archived:
+        return
+    to_change = {}
+    for name, value  in kwargs.items():
+        if getattr(repo, name) != value:
+            to_change[name] = value
 
-    The current policy is: 
-     - Developers team members and protected_repositories are explicitly
-       defined in config.
-     - Researchers team members are everyone except explicitly defined bots.
-     - Developers have admin permission to protected_repositories.
-     - Researchers have admin permission to all other repositories
-     - All master (or main) branches are protected, with enforce_admins=True
-     - protected_repositories master (or main) branches additionally require review.
-     - Small explicit Managers team has admin access to all repos.
-
-    The primary goal is to partition the repos into studies and infrastructure,
-    and restrict researchers from being able to write to infrastructure repos.
-    Additionally, we restrict force-push from the cli via enabling branch
-    protection with enforce_admins=True, and additionally restrict
-    infrastructure repos to require review, which prevents pushing directly to
-    master (or main).
-
-    Note: the reason researchers have admin permissions is to allow them to
-    invite external collaborators. The branch protection provides some extra
-    security that they cannot force push even though they are admins. All other
-    admin operations have to go via the website, with 2FA, so are less likely
-    to be usable in an attack.
-    """
-
-    opensafely = client.GithubTeam(org)
-    researchers = client.GithubTeam(org.get_team_by_slug('researchers'))
-    developers = client.GithubTeam(org.get_team_by_slug('developers'))
-    managers = client.GithubTeam(org.get_team_by_slug('managers'))
-
-    # everyone is a researcher
-    print('Checking researchers membership...')
-    for member in opensafely.members.values():
-        # avoid elevating bot accounts
-        if member.login not in config['bots']:
-            yield from researchers.add_member(member)
-
-    print('Checking developers membership...')
-    for dev in config['developers']:
-        if dev in opensafely.members:  # protect against deleted users
-            yield from developers.add_member(opensafely.members[dev])
-
-    print('Checking admins membership...')
-    for manager in config['managers']:
-        if manager in opensafely.members:  # protect against deleted users
-            yield from managers.add_member(opensafely.members[manager])
-
-    # TODO: remove developers/admins if they are no longer in the groups. In
-    # the common case (someone leaving), then I think there is no need, as
-    # their account will be removed from the organisation and thus any teams.
-    # But we should probably check that
-
-    print('Checking org repositories...')
-    for repo in opensafely.repos.values():
-        print(repo.full_name)
-        # admins have access to all repos
-        yield from managers.add_repo(repo, 'admin')
-
-        # either a protected developer repo or not
-        if repo.full_name in config['protected_repositories']:
-            # stricter branch protection for these repos 
-            yield from protect_branch(
-                repo,
-                enforce_admins=True,
-                required_approving_review_count=1,
-            )
-            yield from developers.add_repo(repo, 'admin')
-            yield from researchers.add_repo(repo, 'triage')
-        else:
-            # basic branch protection against force pushes, even for admins
-            yield from protect_branch(repo, enforce_admins=True)
-            yield from researchers.add_repo(repo, 'admin')
+    if to_change:
+        yield client.Change(
+            lambda: repo.edit(**to_change),
+            'setting repo policy:\n{}',
+            to_change,
+        )
 
 
 def input_with_timeout(prompt, timeout=5.0):
@@ -191,6 +154,45 @@ def input_with_timeout(prompt, timeout=5.0):
     else:
         return None
 
+
+def manage_code(org, repo_policy=None, branch_policy=None):
+    """Ensure that all opensafe-core repos have the correct configuration."""
+    code = client.GithubTeam(org)
+    for repo in code.repos.values():
+        print(repo.full_name)
+        if repo_policy:
+            yield from configure_repo(repo, **repo_policy)
+        if branch_policy:
+            yield from protect_branch(repo, **branch_policy)
+
+
+def manage_studies(org, repo_policy, branch_policy, config):
+    """Ensure all opensafely repos have the correct config.
+
+    This also involves adding non_study repos to the editors team, and all
+    others to the researchers team.
+    """
+    opensafely = client.GithubTeam(org)
+    researchers = client.GithubTeam(org.get_team_by_slug('researchers'))
+    editors = client.GithubTeam(org.get_team_by_slug('editors'))
+
+    # everyone is in researchers group
+    for member in opensafely.members.values():
+        # avoid elevating bot accounts
+        if member.login not in config['bots']:
+            yield from researchers.add_member(member)
+
+    for repo in opensafely.repos.values():
+        print(repo.full_name)
+        yield from configure_repo(repo, **repo_policy)
+        yield from protect_branch(repo, **branch_policy)
+
+        if repo.full_name in config["not_studies"]:
+            yield from editors.add_repo(repo, 'admin')
+        else:
+            # researchers have access to all studies
+            yield from researchers.add_repo(repo, 'admin')
+         
 
 def main(argv=sys.argv[1:]):
     parser = argparse.ArgumentParser(
@@ -215,7 +217,8 @@ def main(argv=sys.argv[1:]):
     elif args.execute:
         mode = 'execute'
 
-    org = client.get_org()
+    studies = client.get_org('opensafely')
+    core = client.get_org('opensafely-core')
     config = yaml.safe_load(open(args.config))
 
     if mode == 'dry-run':
@@ -224,7 +227,12 @@ def main(argv=sys.argv[1:]):
     pending_changes = []
 
     # analyse changes needed
-    for change in ensure_teams(config, org):
+    changes = itertools.chain(
+        manage_studies(studies, REPO_POLICY, STUDY_BRANCH_POLICY, config),
+        manage_code(core, REPO_POLICY, CODE_BRANCH_POLICY),
+    )
+
+    for change in changes:
         print(change)
         if mode == 'execute':
             change()

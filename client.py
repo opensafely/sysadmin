@@ -18,7 +18,7 @@ def github_client():
     return Github(token)
 
 
-def get_org(org='OpenSAFELY'):
+def get_org(org):
     return github_client().get_organization(org)
 
 
