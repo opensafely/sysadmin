@@ -67,7 +67,11 @@ def update():
 
         if os.path.exists(path):
             os.chdir(path)
-            subprocess.run(["git", "checkout", "master"], check=True)
+            try:
+                subprocess.run(["git", "checkout", "master"], check=True)
+            except subprocess.CalledProcessError:
+                subprocess.run(["git", "checkout", "main"], check=True)
+
             subprocess.run(["git", "pull"], check=True)
         else:
             subprocess.run(["git", "clone", repo.ssh_url, path], check=True)
@@ -110,7 +114,7 @@ def get_client():
 def get_repos(client, org_name=ORG_NAME):
     org = client.get_organization(org_name)
     config = yaml.safe_load(open('config.yaml'))
-    excluded = config['protected_repositories'] + config.get('non_study_repos', [])
+    excluded = config['not_studies']
     repos = [repo for repo in org.get_repos() if repo.full_name not in excluded]
     return sorted(repos, key=lambda repo: repo.name)
 

@@ -9,7 +9,5 @@ not_studies:
         - opensafely/server-instructions
         # to be deleted
         - opensafely/docker-registry
-        - opensafely/repo-updater
         # to be moved
         - opensafely/matching
-        - opensafely/stata-docker
