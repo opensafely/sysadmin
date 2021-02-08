@@ -1,0 +1,8 @@
+# security
+unattended-upgrades
+# core dependencies
+docker.io
+# debug tools
+tree
+iotop
+tcpdump
