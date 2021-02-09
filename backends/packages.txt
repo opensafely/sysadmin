@@ -1,0 +1,10 @@
+# security
+unattended-upgrades
+# core dependencies
+docker.io
+# debug tools
+tree
+silversearcher-ag
+sysstat
+iotop
+tcpdump
