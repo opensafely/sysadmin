@@ -177,6 +177,23 @@ Notes:
 
 Once a pull request is merged, it is not possible for users to re-open the pull request & update the reference. Therefore, if a pull request contains bad commits, you must contact Github Support and ask them to delete the pull request.
 
+Here is a sample email that you could use, although bear in mind you'll probably have to fight your way past a few front-line triage replies!
+
+#### Sample email
+
+Hi there,
+
+I'm working with a team that handles medical records using code hosted on github.
+
+Some sensitive medical data has been accidentally committed to a github repository that I am an owner of. Please could you delete the following pull requests:
+
+https://github.com/opensafely/my-research/pull/1337
+
+Many thanks in advance,
+$MY_NAME
+OpenSAFELY
+
+
 ### PRs that were not merged
 
 If a pull request was not merged, it is possible to update the reference. You should:
